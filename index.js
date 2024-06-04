@@ -3,7 +3,7 @@ require("dotenv").config();
 const app = express();
 
 const cors = require("cors");
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 8000;
 
 //   middle ware
 app.use(cors());
@@ -30,15 +30,31 @@ async function run() {
 
     const articleCollection= client.db('newsPaper').collection('article')
     const userCollection=client.db('newsPaper').collection('users')
+    const publisherCollection=client.db('newsPaper').collection('publishers')
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
+
+
     //  post api for add article
      app.post("/add-article",async(req,res)=>{
       const addArticle=req.body
       const result=await articleCollection.insertOne(addArticle)
       res.send(result)
      })
+
+    //   post api for publisher
+     app.post("/all-publisher",async(req,res)=>{
+      const publisher=req.body
+      // console.log(publisher)
+      const result=await publisherCollection.insertOne(publisher)
+      res.send(result)
+     })
+    //   get all publisher
+    app.get("/all-publisher",async(req,res)=>{
+       const result= await publisherCollection.find().toArray()
+       res.send(result)
+    })
     //   users api
     // post users
      app.post('/users',async(req,res)=>{
