@@ -13,8 +13,8 @@ app.get("/", (req, res) => {
 });
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const uri =
-  `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.gze7wpc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const { status } = require("init");
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.gze7wpc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 //    console.log(uri)
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -27,37 +27,90 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-
-    const articleCollection= client.db('newsPaper').collection('article')
-    const userCollection=client.db('newsPaper').collection('users')
-    const publisherCollection=client.db('newsPaper').collection('publishers')
+    const articleCollection = client.db("newsPaper").collection("article");
+    const userCollection = client.db("newsPaper").collection("users");
+    const publisherCollection = client.db("newsPaper").collection("publishers");
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
-
-
+    // post for jwt
     //  post api for add article
-     app.post("/add-article",async(req,res)=>{
-      const addArticle=req.body
-      const result=await articleCollection.insertOne(addArticle)
-      res.send(result)
-     })
+    app.post("/add-article", async (req, res) => {
+      const addArticle = req.body;
+      const result = await articleCollection.insertOne(addArticle);
+      res.send(result);
+    });
+    //  get api for all-article
+    app.get("/add-article", async (req, res) => {
+      const result = await articleCollection.find().toArray();
+      res.send(result);
+      // console.log(result)
+    });
+    //  patch api for make premium article
+    app.put("/add-article/:id/premium", async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+      const filter = { _id: new ObjectId(id) };
+      
+       const updateDoc={
+        $set:{
+          status:"premium"
+        }
+       }
 
-    //   post api for publisher
-     app.post("/all-publisher",async(req,res)=>{
-      const publisher=req.body
-      // console.log(publisher)
-      const result=await publisherCollection.insertOne(publisher)
-      res.send(result)
-     })
-    //   get all publisher
-    app.get("/all-publisher",async(req,res)=>{
-       const result= await publisherCollection.find().toArray()
-       res.send(result)
+      const result = await articleCollection.updateOne(filter, updateDoc);
+      res.send(result);
+      console.log(result);
+    });
+//  for approved
+    app.put("/add-article/:id/approved", async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+      const filter = { _id: new ObjectId(id) };
+      
+       const updateDoc={
+        $set:{
+          status:"approved"
+        }
+       }
+
+      const result = await articleCollection.updateOne(filter, updateDoc);
+      res.send(result);
+      console.log(result);
+    });
+    
+    app.put("/add-article/:id/decline", async (req, res) => {
+      const id = req.params.id;
+      const reason=req.query.body
+             console.log(reason)
+      const result = await articleCollection.updateOne( { _id: new ObjectId(id) },
+      { $set: { status: 'declined', declineReason: reason } } );
+      res.send(result);
+      console.log(result);
+    });
+    //  delete article
+    app.delete("/add-article/:id",async(req,res)=>{
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      console.log(id);
+      const result = await articleCollection.deleteOne(query);
+      res.send(result);
     })
+    //   post api for publisher
+    app.post("/all-publisher", async (req, res) => {
+      const publisher = req.body;
+      // console.log(publisher)
+      const result = await publisherCollection.insertOne(publisher);
+      res.send(result);
+    });
+    //   get all publisher
+    app.get("/all-publisher", async (req, res) => {
+      const result = await publisherCollection.find().toArray();
+      res.send(result);
+    });
     //   users api
     // post users
-     app.post('/users',async(req,res)=>{
+    app.post("/users", async (req, res) => {
       const user = req.body;
       // console.log(user)
       const query = { email: user.email };
@@ -67,28 +120,27 @@ async function run() {
       }
       const result = await userCollection.insertOne(user);
       res.send(result);
-     
     });
     //  get users
-      app.get('/users',async(req,res)=>{
-        const result=await userCollection.find().toArray()
-        // console.log(result)
-        res.send(result)
-      })
-      // make admin 
-        app.patch("/users/admin/:id",async (req,res)=>{
-          const id=req.params.id
-          // console.log(id)
-          const filter= {_id: new ObjectId(id)}
-           const updateDoc={
-            $set:{
-              role:'admin'
-            }
-           }
-            const result= await userCollection.updateOne(filter,updateDoc)
-            res.send(result)
-            // console.log(result)
-        })
+    app.get("/users", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      // console.log(result)
+      res.send(result);
+    });
+    // make admin
+    app.patch("/users/admin/:id", async (req, res) => {
+      const id = req.params.id;
+      // console.log(id)
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          role: "admin",
+        },
+      };
+      const result = await userCollection.updateOne(filter, updateDoc);
+      res.send(result);
+      // console.log(result)
+    });
 
     await client.db("admin").command({ ping: 1 });
     console.log(
@@ -104,3 +156,27 @@ run().catch(console.dir);
 app.listen(port, () => {
   console.log(`newspaper is running at ${port}`);
 });
+
+// const type = req.query.type;
+
+// let updateDoc = {};
+
+// if (type === "approved") {
+//   updateDoc = {
+//     $set: {
+//       status: "approved",
+//     },
+//   };
+// } else if (type === "premium") {
+//   updateDoc = {
+//     $set: {
+//       status: "premium",
+//     },
+//   };
+// } else {
+//   updateDoc = {
+//     $set: {
+//       status: "declined",
+//     },
+//   };
+// }
