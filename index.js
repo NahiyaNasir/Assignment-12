@@ -1,4 +1,5 @@
 const express = require("express");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const app = express();
 
@@ -33,71 +34,160 @@ async function run() {
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
+    //  verify token
+    const verifyToken = (req, res, next) => {
+      // console.log(req.headers)
+      if (!req.headers.authorization) {
+        res.status(403).send({ message: "forbidden access" });
+      }
+      const token = req.headers.authorization.split(" ")[1];
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decode) => {
+        if (err) {
+          return res.status(401).send({ message: "unauthorized access" });
+        }
+        req.decoded = decode;
+        // console.log(decode)
+        next();
+      });
+    };
+
+    //  verify admin after verify token
+    const verifyAdmin = async (req, res, next) => {
+      const email = req?.decoded?.email;
+      console.log(req?.decoded?.email);
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.role === "admin";
+      // console.log(isAdmin);
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
     // post for jwt
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = await jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
+      // console.log(token)
+      res.send({ token });
+    });
+
     //  post api for add article
-    app.post("/add-article", async (req, res) => {
+    app.post("/add-article", verifyToken, async (req, res) => {
       const addArticle = req.body;
       const result = await articleCollection.insertOne(addArticle);
       res.send(result);
     });
-    //  get api for all-article
-    app.get("/add-article", async (req, res) => {
+   
+    // get api fot search by article title
+   app.get("/all-article-by-search-status-flitter",async(req,res)=>{
+       const search=req.query.search
+       const status= req.query.status
+       const filter=req.query.filter
+       let query={}
+       if(status){
+    
+        query.status = status;
+       }
+      //  console.log(status)
+  
+       if(search){
+        query.article = { $regex: search, $options: "i" };
+       } 
+      //  console.log(search)
+      //  console.log(query)
+       if(filter){
+        // query={publisher:filter,tags:filter}
+         query={publisher:filter}
+       
+       }
+       console.log(filter)
+       console.log(query)
+       const result= await articleCollection.find(query).toArray()
+       res.send(result)
+   })
+
+    //  get api for all-article for admin
+    app.get("/add-article", verifyToken, verifyAdmin, async (req, res) => {
       const result = await articleCollection.find().toArray();
       res.send(result);
       // console.log(result)
     });
     //  patch api for make premium article
-    app.put("/add-article/:id/premium", async (req, res) => {
-      const id = req.params.id;
-      console.log(id);
-      const filter = { _id: new ObjectId(id) };
-      
-       const updateDoc={
-        $set:{
-          status:"premium"
-        }
-       }
+    app.put(
+      "/add-article/:id/premium",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        console.log(id);
+        const filter = { _id: new ObjectId(id) };
 
-      const result = await articleCollection.updateOne(filter, updateDoc);
-      res.send(result);
-      console.log(result);
-    });
-//  for approved
-    app.put("/add-article/:id/approved", async (req, res) => {
-      const id = req.params.id;
-      console.log(id);
-      const filter = { _id: new ObjectId(id) };
-      
-       const updateDoc={
-        $set:{
-          status:"approved"
-        }
-       }
+        const updateDoc = {
+          $set: {
+            status: "premium",
+          },
+        };
 
-      const result = await articleCollection.updateOne(filter, updateDoc);
-      res.send(result);
-      console.log(result);
-    });
-    
-    app.put("/add-article/:id/decline", async (req, res) => {
-      const id = req.params.id;
-      const reason=req.query.body
-             console.log(reason)
-      const result = await articleCollection.updateOne( { _id: new ObjectId(id) },
-      { $set: { status: 'declined', declineReason: reason } } );
-      res.send(result);
-      console.log(result);
-    });
+        const result = await articleCollection.updateOne(filter, updateDoc);
+        res.send(result);
+        // console.log(result);
+      }
+    );
+    //  for approved
+    app.put(
+      "/add-article/:id/approved",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        console.log(id);
+        const filter = { _id: new ObjectId(id) };
+
+        const updateDoc = {
+          $set: {
+            status: "approved",
+          },
+        };
+
+        const result = await articleCollection.updateOne(filter, updateDoc);
+        res.send(result);
+        console.log(result);
+      }
+    );
+
+    app.put(
+      "/add-article/:id/decline",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const reason = req.query.body;
+        console.log(reason);
+        const result = await articleCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status: "declined", declineReason: reason } }
+        );
+        res.send(result);
+        console.log(result);
+      }
+    );
     //  delete article
-    app.delete("/add-article/:id",async(req,res)=>{
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      console.log(id);
-      const result = await articleCollection.deleteOne(query);
-      res.send(result);
-    })
+    app.delete(
+      "/add-article/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        console.log(id);
+        const result = await articleCollection.deleteOne(query);
+        res.send(result);
+      }
+    );
     //   post api for publisher
-    app.post("/all-publisher", async (req, res) => {
+    app.post("/all-publisher", verifyToken, async (req, res) => {
       const publisher = req.body;
       // console.log(publisher)
       const result = await publisherCollection.insertOne(publisher);
@@ -122,13 +212,13 @@ async function run() {
       res.send(result);
     });
     //  get users
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyToken, async (req, res) => {
       const result = await userCollection.find().toArray();
       // console.log(result)
       res.send(result);
     });
     // make admin
-    app.patch("/users/admin/:id", async (req, res) => {
+    app.patch("/users/admin/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       // console.log(id)
       const filter = { _id: new ObjectId(id) };
@@ -140,6 +230,22 @@ async function run() {
       const result = await userCollection.updateOne(filter, updateDoc);
       res.send(result);
       // console.log(result)
+    });
+
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req?.decoded?.email) {
+        console.log(req.decoded.email);
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      // console.log(user)
+      let admin = false;
+      if (user) {
+        admin = user?.role === "admin";
+      }
+       res.send({ admin });
     });
 
     await client.db("admin").command({ ping: 1 });
