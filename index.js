@@ -110,7 +110,7 @@ async function run() {
     });
 
     //   all articles  details by id
-    app.get("/all-article-by-search-status-flitter/:id", async (req, res) => {
+    app.get("/all-articles/:id", async (req, res) => {
       const id = req.params.id;
       //  console.log(id)
       const query = { _id: new ObjectId(id) };
@@ -118,7 +118,7 @@ async function run() {
       res.send(result);
     });
     //  increase view count
-    app.patch("/all-article-by-search-status-flitter/:id", async (req, res) => {
+    app.patch("/all-articles/:id", async (req, res) => {
       const id = req.params.id;
       // console.log(id)
       const filter = { _id: new ObjectId(id) };
@@ -129,7 +129,19 @@ async function run() {
       res.send(result);
     });
     //   get premium articles
-    // app.get()
+    app.get("/article-premium",async(req,res)=>{
+          const    status = req.query.status;
+          const query={status:status}
+          const result=await articleCollection.find(query).toArray()
+          res.send(result)
+    })
+    //   get articles for current user
+    app.get('/my-articles/:email',async(req,res)=>{
+      const email=req.query.email
+      const query={email:email}
+      const result=await articleCollection.findOne(query)
+      res.send(result)
+    })
 
     //  get api for all-article for admin
     app.get("/add-article", verifyToken, verifyAdmin, async (req, res) => {
@@ -258,7 +270,7 @@ async function run() {
     app.get("/users/admin/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       if (email !== req?.decoded?.email) {
-        console.log(req.decoded.email);
+        // console.log(req.decoded.email);
         return res.status(403).send({ message: "forbidden access" });
       }
       const query = { email: email };
