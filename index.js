@@ -79,34 +79,57 @@ async function run() {
       const result = await articleCollection.insertOne(addArticle);
       res.send(result);
     });
-   
+
     // get api fot search by article title
-   app.get("/all-article-by-search-status-flitter",async(req,res)=>{
-       const search=req.query.search
-       const status= req.query.status
-       const filter=req.query.filter
-       let query={}
-       if(status){
-    
+    app.get("/all-article-by-search-status-flitter", async (req, res) => {
+      const search = req.query.search;
+      const status = req.query.status;
+      const publisher = req.query.publisher;
+      const tags = req.query.tags;
+      let query = {};
+      if (status) {
         query.status = status;
-       }
+      }
       //  console.log(status)
-  
-       if(search){
+
+      if (search) {
         query.article = { $regex: search, $options: "i" };
-       } 
+      }
       //  console.log(search)
       //  console.log(query)
-       if(filter){
-        // query={publisher:filter,tags:filter}
-         query={publisher:filter}
-       
-       }
-       console.log(filter)
-       console.log(query)
-       const result= await articleCollection.find(query).toArray()
-       res.send(result)
-   })
+      if (publisher) {
+        query.publisher = publisher;
+      }
+      if (tags) {
+        query.tags = tags;
+      }
+
+      //  console.log(query)
+      const result = await articleCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    //   all articles  details by id
+    app.get("/all-article-by-search-status-flitter/:id", async (req, res) => {
+      const id = req.params.id;
+      //  console.log(id)
+      const query = { _id: new ObjectId(id) };
+      const result = await articleCollection.findOne(query);
+      res.send(result);
+    });
+    //  increase view count
+    app.patch("/all-article-by-search-status-flitter/:id", async (req, res) => {
+      const id = req.params.id;
+      // console.log(id)
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $inc: { viewCount: 1 },
+      };
+      const result = await articleCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+    //   get premium articles
+    // app.get()
 
     //  get api for all-article for admin
     app.get("/add-article", verifyToken, verifyAdmin, async (req, res) => {
@@ -245,7 +268,7 @@ async function run() {
       if (user) {
         admin = user?.role === "admin";
       }
-       res.send({ admin });
+      res.send({ admin });
     });
 
     await client.db("admin").command({ ping: 1 });
