@@ -5,6 +5,8 @@ const app = express();
 
 const cors = require("cors");
 const port = process.env.PORT || 8000;
+const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
+// console.log(process.env.PAYMENT_SECRET_KEY)
 
 //   middle ware
 app.use(cors());
@@ -14,7 +16,7 @@ app.get("/", (req, res) => {
 });
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const { status } = require("init");
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.gze7wpc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 //    console.log(uri)
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -31,6 +33,7 @@ async function run() {
     const articleCollection = client.db("newsPaper").collection("article");
     const userCollection = client.db("newsPaper").collection("users");
     const publisherCollection = client.db("newsPaper").collection("publishers");
+    // const subscriptionCollection=client.db("newsPaper").collection("subscription")
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
@@ -54,7 +57,7 @@ async function run() {
     //  verify admin after verify token
     const verifyAdmin = async (req, res, next) => {
       const email = req?.decoded?.email;
-      console.log(req?.decoded?.email);
+      // console.log(req?.decoded?.email);
       const query = { email: email };
       const user = await userCollection.findOne(query);
       const isAdmin = user?.role === "admin";
@@ -65,6 +68,44 @@ async function run() {
       next();
     };
 
+    //   for subscribe
+    app.post("/subscribe", async (req, res) => {
+      const { email, period } = req.body;
+      const periods = {
+        "1 minute": 1 * 60 * 1000,
+        "5 days": 5 * 24 * 60 * 60 * 1000,
+        "10 days": 10 * 24 * 60 * 60 * 1000,
+      };
+      const subscriptionDuration = periods[period];
+      const subscriptionEnd = new Date(Date.now() + subscriptionDuration);
+      const result = await userCollection.updateOne(
+        { email: email },
+        { $set: { premiumTaken: subscriptionEnd } }
+      );
+      // console.log(result);
+      res.send(result);
+    });
+    //   verifying user   premium user
+    const checkSubscription = async (req, res, next) => {
+      const { email } = req.body;
+      // console.log(email);
+      try {
+        const user = await userCollection
+          .collection("users")
+          .findOne({ email: email });
+        if (user.premiumTaken && new Date() > new Date(user.premiumTaken)) {
+          // Subscription expired
+          await userCollection
+            .collection("users")
+            .updateOne({ email: email }, { $set: { premiumTaken: null } });
+        }
+        next();
+      } catch (error) {
+        res.status(500).json({ message: "Error checking subscription" });
+      }
+    };
+
+   
     // post for jwt
     app.post("/jwt", async (req, res) => {
       const user = req.body;
@@ -72,7 +113,32 @@ async function run() {
       // console.log(token)
       res.send({ token });
     });
+    //  payment  related api
+    app.post("/create-payment-intent", async (req, res) => {
+      const { period } = req.body;
+      let price = {};
+      if (period === "1 minute") {
+        price = 10;
+      } else if (period === "5 days") {
+        price = 25;
+      } else if (period === "10 days") {
+        price = 35;
+      } else {
+        return res.status(400).send("Invalid subscription period");
+      }
 
+      const amount = price * 100;
+      // console.log(amount)
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      // console.log(paymentIntent)
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
     //  post api for add article
     app.post("/add-article", verifyToken, async (req, res) => {
       const addArticle = req.body;
@@ -129,20 +195,49 @@ async function run() {
       res.send(result);
     });
     //   get premium articles
-    app.get("/article-premium",async(req,res)=>{
-          const    status = req.query.status;
-          const query={status:status}
-          const result=await articleCollection.find(query).toArray()
-          res.send(result)
-    })
+    app.get("/article-premium", async (req, res) => {
+      const status = req.query.status;
+      const query = { status: status };
+      const result = await articleCollection.find(query).toArray();
+      res.send(result);
+    });
     //   get articles for current user
-    app.get('/my-articles/:email',async(req,res)=>{
-      const email=req.query.email
-      const query={email:email}
-      const result=await articleCollection.findOne(query)
-      res.send(result)
-    })
+    app.get("/my-articles-byEmail", async (req, res) => {
+      const author_email = req.query.author_email;
+      // console.log(author_email)
+      const query = { author_email: author_email };
+      // console.log(query)
+      const result = await articleCollection.find(query).toArray();
+      // console.log(result)
+      res.send(result);
+    });
+    //  delete my articles
+    app.delete("/my-articles-delete/:id", async (req, res) => {
+      const id = req.params.id;
+      // console.log(id)
+      const query = { _id: new ObjectId(id) };
+      // console.log(query)
+      const result = await articleCollection.deleteOne(query);
+      res.send(result);
+    });
 
+    //  for pic chart
+    app.get("/publication-stats", async (req, res) => {
+      const publisher = req.query.publisher;
+      const query = { publisher: publisher };
+      console.log(query);
+      const result = await articleCollection.find(query).toArray();
+      res.send(result);
+      // const result=await articleCollection.aggregate([
+      //   {
+      //     $unwind: "$publisher",
+      //   },
+
+      // ]).toArray()
+
+      // res.send(result)
+      // console.log(result)
+    });
     //  get api for all-article for admin
     app.get("/add-article", verifyToken, verifyAdmin, async (req, res) => {
       const result = await articleCollection.find().toArray();
@@ -156,7 +251,7 @@ async function run() {
       verifyAdmin,
       async (req, res) => {
         const id = req.params.id;
-        console.log(id);
+        // console.log(id);
         const filter = { _id: new ObjectId(id) };
 
         const updateDoc = {
@@ -177,7 +272,7 @@ async function run() {
       verifyAdmin,
       async (req, res) => {
         const id = req.params.id;
-        console.log(id);
+        // console.log(id);
         const filter = { _id: new ObjectId(id) };
 
         const updateDoc = {
@@ -198,14 +293,14 @@ async function run() {
       verifyAdmin,
       async (req, res) => {
         const id = req.params.id;
-        const reason = req.query.body;
-        console.log(reason);
+        const reason = req.params.body;
+        // console.log(reason);
         const result = await articleCollection.updateOne(
           { _id: new ObjectId(id) },
           { $set: { status: "declined", declineReason: reason } }
         );
         res.send(result);
-        console.log(result);
+        // console.log(result);
       }
     );
     //  delete article
@@ -216,11 +311,21 @@ async function run() {
       async (req, res) => {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
-        console.log(id);
+        // console.log(id);
         const result = await articleCollection.deleteOne(query);
         res.send(result);
       }
     );
+    // get  treading article
+    app.get("/trending-article", async (req, res) => {
+      const result = await articleCollection
+        .find()
+        .sort({ viewCount: -1 })
+        .limit(6)
+        .toArray();
+      //  console.log(result)
+      res.send(result);
+    });
     //   post api for publisher
     app.post("/all-publisher", verifyToken, async (req, res) => {
       const publisher = req.body;
@@ -243,9 +348,25 @@ async function run() {
       if (existingUser) {
         return res.send({ message: " user already exits" });
       }
+      user.premiumTaken = null;
       const result = await userCollection.insertOne(user);
       res.send(result);
     });
+
+      //  login
+      app.post("/login",checkSubscription,async(req,res)=>{
+        const email=req.body
+        try {
+          const user = await userCollection.collection('users').findOne({ email });
+          if (!user) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+          }
+          res.status(200).json({ message: 'Login successful', user });
+        } catch (error) {
+          res.status(500).json({ message: 'Error logging in' });
+        }
+      });
+    
     //  get users
     app.get("/users", verifyToken, async (req, res) => {
       const result = await userCollection.find().toArray();
