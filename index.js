@@ -1,6 +1,7 @@
+require("dotenv").config();
 const express = require("express");
 const jwt = require("jsonwebtoken");
-require("dotenv").config();
+
 const app = express();
 
 const cors = require("cors");
@@ -11,6 +12,11 @@ const stripe = require("stripe")(process.env.PAYMENT_SECRET_KEY);
 //   middle ware
 app.use(cors());
 app.use(express.json());
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://assigment-12-client.web.app"],
+  })
+);
 app.get("/", (req, res) => {
   res.send(" bistro boss is running");
 });
@@ -33,10 +39,11 @@ async function run() {
     const articleCollection = client.db("newsPaper").collection("article");
     const userCollection = client.db("newsPaper").collection("users");
     const publisherCollection = client.db("newsPaper").collection("publishers");
-    // const subscriptionCollection=client.db("newsPaper").collection("subscription")
+
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
+
     //  verify token
     const verifyToken = (req, res, next) => {
       // console.log(req.headers)
@@ -105,7 +112,6 @@ async function run() {
       }
     };
 
-   
     // post for jwt
     app.post("/jwt", async (req, res) => {
       const user = req.body;
@@ -138,6 +144,17 @@ async function run() {
       res.send({
         clientSecret: paymentIntent.client_secret,
       });
+    });
+    //  static
+    app.get("/users-static", async (req, res) => {
+      const allUser = await userCollection.countDocuments();
+      const normalUser = await userCollection.countDocuments({
+        premiumTaken: null,
+      });
+      const premiumUser = await userCollection.countDocuments({
+        premiumTaken: { $ne: null },
+      });
+      res.send({ allUser, normalUser, premiumUser });
     });
     //  post api for add article
     app.post("/add-article", verifyToken, async (req, res) => {
@@ -220,23 +237,37 @@ async function run() {
       const result = await articleCollection.deleteOne(query);
       res.send(result);
     });
-
+    app.patch("/my-articles-update/:id", async (req, res) => {
+      const updateItem = req.body;
+      const id = req.params.id;
+      const flitter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          article: updateItem.article,
+          publisher: updateItem.publisher,
+          image: updateItem.image,
+          description: updateItem.description,
+        },
+      };
+      const result = await articleCollection.updateOne(flitter, updateDoc);
+      console.log(result);
+      res.send(result);
+    });
     //  for pic chart
     app.get("/publication-stats", async (req, res) => {
-      const publisher = req.query.publisher;
-      const query = { publisher: publisher };
-      console.log(query);
-      const result = await articleCollection.find(query).toArray();
-      res.send(result);
-      // const result=await articleCollection.aggregate([
-      //   {
-      //     $unwind: "$publisher",
-      //   },
+      const publication = await articleCollection
+        .aggregate([
+          {
+            $group: {
+              _id: "$publisher",
+              count: { $sum: 1 },
+            },
+          },
+        ])
+        .toArray();
 
-      // ]).toArray()
-
-      // res.send(result)
-      // console.log(result)
+      // console.log(publication)
+      res.send(publication);
     });
     //  get api for all-article for admin
     app.get("/add-article", verifyToken, verifyAdmin, async (req, res) => {
@@ -303,6 +334,23 @@ async function run() {
         // console.log(result);
       }
     );
+
+    app.put(
+      "/add-article/reason",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const reason = req.body.params;
+        console.log(reason);
+        const result = await articleCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { declineReason: reason } }
+        );
+        res.send(result);
+        // console.log(result);
+      }
+    );
+
     //  delete article
     app.delete(
       "/add-article/:id",
@@ -353,20 +401,22 @@ async function run() {
       res.send(result);
     });
 
-      //  login
-      app.post("/login",checkSubscription,async(req,res)=>{
-        const email=req.body
-        try {
-          const user = await userCollection.collection('users').findOne({ email });
-          if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials' });
-          }
-          res.status(200).json({ message: 'Login successful', user });
-        } catch (error) {
-          res.status(500).json({ message: 'Error logging in' });
-        }
-      });
-    
+    //  login
+    app.post("/login", checkSubscription, async (req, res) => {
+      const email = req.body;
+      try {
+        const user = await userCollection
+          .collection("users")
+          .findOne({ email });
+        if (!user) {
+          return res.status(401).json({ message: "Invalid credentials" });
+        }
+        res.status(200).json({ message: "Login successful", user });
+      } catch (error) {
+        res.status(500).json({ message: "Error logging in" });
+      }
+    });
+
     //  get users
     app.get("/users", verifyToken, async (req, res) => {
       const result = await userCollection.find().toArray();
